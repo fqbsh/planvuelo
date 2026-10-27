@@ -116,12 +116,13 @@ button:disabled{opacity:.55;cursor:wait}
 pre.taf{font-family:var(--f-mono);font-size:.88rem;white-space:pre-wrap;word-break:break-word;margin:0;color:var(--ink)}
 </style>
 
-<nav class="pvnav"><a href="metar.html" class="on">METAR</a><a href="descenso.html" class="">Descenso</a></nav>
 <div class="pvset"><details id="pvdet"><summary>Ajustes del servidor</summary>
 <div class="row"><input id="pvproxy" placeholder="https://planvuelo.tu-usuario.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" id="pvsave">Guardar</button></div>
 <p id="pvmsg" style="margin:6px 0 2px;font-size:.85rem;color:var(--muted)">Es la dirección del Worker que creaste en Cloudflare. Se guarda en este teléfono.</p></details></div>
 <script>(function(){const i=document.getElementById("pvproxy"),m=document.getElementById("pvmsg");let v="";try{v=localStorage.getItem("pv-proxy")||""}catch(e){}
 i.value=v||window.PV_DEFAULT_PROXY||""; if(!i.value)document.getElementById("pvdet").open=true;
+const keep=()=>{const u=i.value.trim().replace(/\/+$/,"");if(/^https:\/\//.test(u)){try{localStorage.setItem("pv-proxy",u)}catch(e){}}};
+i.addEventListener("input",keep);i.addEventListener("change",keep);i.addEventListener("blur",keep);
 document.getElementById("pvsave").addEventListener("click",async()=>{const u=i.value.trim().replace(/\/+$/,"");if(!/^https:\/\//.test(u)){m.textContent="La dirección debe empezar con https://";return}
 try{localStorage.setItem("pv-proxy",u)}catch(e){} m.textContent="Probando…";
 try{const r=await fetch(u);const t=await r.text();m.textContent=/PlanVuelo/.test(t)?"Guardado. El servidor responde bien.":"Guardado, pero esa dirección no parece ser tu Worker de PlanVuelo."}catch(e){m.textContent="Guardado, pero no pude conectar con esa dirección. Revísala."}});})();</script><div class="wrap">
