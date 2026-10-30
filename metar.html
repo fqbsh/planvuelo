@@ -17,7 +17,21 @@
 input,textarea{font-size:16px!important}
 </style>
 <script>
-window.PV_DEFAULT_PROXY="";
+window.PV_DEFAULT_PROXY="https://planvuelo.fabiancamiloquintero28.workers.dev";
+window.PV_NOTAM=async function(icao){
+  const r=await fetch(pvProxy()+"/notam?icao="+encodeURIComponent(icao),{cache:"no-store"});
+  const t=await r.text(); let j; try{j=JSON.parse(t)}catch(e){throw new Error(t.slice(0,160)||"respuesta inválida")}
+  if(!r.ok||j.error) throw new Error(j.error||("error "+r.status));
+  const f=x=>{if(!x)return "";const d=new Date(x*1000);const p=n=>String(n).padStart(2,"0");return p(d.getUTCFullYear()%100)+p(d.getUTCMonth()+1)+p(d.getUTCDate())+p(d.getUTCHours())+p(d.getUTCMinutes())};
+  const WORDS=new Set(["AND","OR","OF","IN","TO","Y","A","AT","BY","ON","NO","DE","LA","EL","EN","AL","FOR","THE","WITH","IS","BE"]);
+  const unwrap=e=>{const L=String(e||"").replace(/\r/g,"").split("\n");let out=L[0]||"";
+    for(let k=1;k<L.length;k++){const nx=L[k];const prev=(out.match(/([A-Z0-9]+)$/)||[])[1]||"";const first=(nx.match(/^([A-Z0-9]+)/)||[])[1]||"";
+      const joined=prev+first; const ab=(typeof ABBR!=="undefined")?ABBR:{};
+      const glue=prev&&first&&!/\s$/.test(out)&&!/^\s/.test(nx)&&(ab[joined]||(prev.length<=2&&!WORDS.has(prev)));
+      out+=glue?nx:" "+nx;}
+    return out.replace(/\s+/g," ").trim()};
+  return (j.rows||[]).map(n=>`${n.id} B) ${f(n.start)} C) ${n.end&&n.end<2147483647?f(n.end):"PERM"}${n.d?" D) "+n.d:""} E) ${unwrap(n.e)}`);
+};
 function pvProxy(){let p="";try{p=localStorage.getItem("pv-proxy")||""}catch(e){} p=(p||window.PV_DEFAULT_PROXY||"").trim().replace(/\/+$/,"");
   if(!p){const e=new Error("Falta configurar el servidor. Abre Ajustes arriba y pega la dirección de tu Worker de Cloudflare.");e.code="noproxy";throw e} return p}
 </script>
@@ -166,6 +180,15 @@ try{const r=await fetch(u);const t=await r.text();m.textContent=/PlanVuelo/.test
     <label for="tafin" id="taflabel">TAF</label>
     <textarea id="tafin" spellcheck="false"></textarea>
     <div class="nlist" id="taflist" style="margin-top:12px"></div>
+  </section>
+
+  <section class="panel">
+    <h2>NOTAM</h2>
+    <label for="notam" id="nlabel">NOTAM</label>
+    <textarea id="notam" spellcheck="false"></textarea>
+    <div class="links" id="nlinks"></div>
+    <p class="hint" id="nhint" style="margin:8px 0 12px"></p>
+    <div class="nlist" id="nlist"></div>
   </section>
 
   <section class="panel">
@@ -366,7 +389,7 @@ function render(){
     html=`<div class="rec">Pista ${best.id}</div><p class="recnote">${note}</p>`+table(rows,d,best.id);
   }
   html+=`<p class="hint" style="margin:10px 0 0">Los rumbos de la tabla son verdaderos, igual que el viento del METAR, por eso no coinciden exacto con el número de la pista (que es magnético). Límites de referencia A320: 10 kt de cola, 38 kt de cruzado.</p>`;
-  $("runway").innerHTML=html; window.__closed=new Set(); try{renderTaf()}catch(e){} try{renderDiagram(d)}catch(e){$("diagram").innerHTML='<p class="empty" style="padding:16px">No se pudo dibujar el diagrama.</p>'}
+  $("runway").innerHTML=html; try{renderNotams()}catch(e){} try{renderTaf()}catch(e){} try{renderDiagram(d)}catch(e){$("diagram").innerHTML='<p class="empty" style="padding:16px">No se pudo dibujar el diagrama.</p>'}
 
   $("groups").innerHTML=out.map(g=>`<div class="g${g.a?" alert":""}${g.u?" unk":""}"><code>${esc(g.c)}</code><div><b>${esc(g.t)}</b><span>${esc(g.s)}</span></div></div>`).join("");
 }
@@ -387,7 +410,7 @@ function save(){try{localStorage.setItem("metar-dec3",JSON.stringify({icao:$("ic
 $("icao").addEventListener("input",()=>{save();render()});
 $("metar").addEventListener("input",()=>{const st=$("metar").value.toUpperCase().trim().split(/\s+/).find(t=>/^[A-Z]{4}$/.test(t)&&t!=="AUTO"&&t!=="METAR"&&t!=="SPECI");
   if(st&&st!==$("icao").value.toUpperCase())$("icao").value=st;save();render()});
-const ABBR={RWY:"pista",TWY:"calle de rodaje",APN:"plataforma",AD:"aeródromo",CLSD:"cerrada",LTD:"limitada","U/S":"fuera de servicio",OTS:"fuera de servicio",GS:"senda de planeo",PERM:"permanente",UNUSBL:"inutilizable",UNMNT:"sin monitoreo",RCL:"luces de eje de pista",REIL:"luces de identificación de umbral",HIRL:"luces de borde de pista",MALSR:"luces de aproximación",TFR:"restricción temporal de vuelo",TWR:"torre",ATIS:"ATIS",ARPT:"aeropuerto",CONST:"construcción",WEF:"con efecto desde",TEMPO:"temporal",WIP:"trabajos en curso",
+const ABBR={RWY:"pista",TWY:"calle de rodaje",APN:"plataforma",AD:"aeródromo",CLSD:"cerrada",LTD:"con restricciones",COMPLETELY:"completamente",ONLY:"solo",PERMANENCE:"permanencia",MIN:"minutos",OVERNIGHT:"pernocta",MIL:"militares",GA:"aviación general",SAR:"búsqueda y rescate",MEDEVAC:"evacuación médica",HOSP:"hospital","U/S":"fuera de servicio",OTS:"fuera de servicio",GS:"senda de planeo",PERM:"permanente",UNUSBL:"inutilizable",UNMNT:"sin monitoreo",RCL:"luces de eje de pista",REIL:"luces de identificación de umbral",HIRL:"luces de borde de pista",MALSR:"luces de aproximación",TFR:"restricción temporal de vuelo",TWR:"torre",ATIS:"ATIS",ARPT:"aeropuerto",CONST:"construcción",WEF:"con efecto desde",TEMPO:"temporal",WIP:"trabajos en curso",
 AVBL:"disponible",BTN:"entre",EXER:"ejercer",CTN:"precaución",OBST:"obstáculo",ERECTED:"levantado",CRANE:"grúa",ILS:"sistema de aterrizaje por instrumentos",LLZ:"localizador",GP:"senda de planeo",
 DME:"medidor de distancia",VOR:"radiofaro VOR",DVOR:"radiofaro VOR",NDB:"radiofaro NDB",ALS:"luces de aproximación",PAPI:"indicador de senda visual",LGT:"luces",ACFT:"aeronave",PRKG:"estacionamiento",PSN:"posición",HGT:"altura",
 ELEV:"elevación",SFC:"superficie",FM:"desde",TIL:"hasta",DLY:"diario",EXC:"excepto",MAX:"máximo",REF:"referencia",APCH:"aproximación",TWR:"torre",FREQ:"frecuencia",SSR:"radar secundario",
@@ -399,7 +422,7 @@ ATZ:"zona de tránsito",WXR:"radar meteorológico",VCY:"cercanías",SIGNAL:"señ
 const REASONS=[[/\bWIP\b|WORK IN PROGRESS|\bWORKS?\b/,"Trabajos en curso"],[/POTHOLE|BACHE/,"Hueco en la pista"],[/GRASS CUTTING/,"Corte de pasto"],[/\bUAS\b|\bUA WILL\b|DRONE/,"Drones en la zona"],
 [/MAINT|MANTENIMIENTO/,"Mantenimiento"],[/\bVA\b|VOLCAN|ERUPTION/,"Ceniza volcánica"],[/CRANE/,"Grúa en obra"],[/\bPJE\b|PARACHUT/,"Paracaidistas"],[/PARAGLID/,"Parapentes"],
 [/RUBBER REMOVAL/,"Limpieza de caucho de la pista"],[/\bCONST\b|CONSTRUCTION/,"Obras de construcción"],[/PAINT|MARKING/,"Pintura de señales"],[/\bINSTL\b/,"Equipo nuevo instalado"],[/FLIGHT CHECK|CALIBRATION/,"Calibración en vuelo"],[/BIRD/,"Aves"],
-[/WILDLIFE|ANIMAL/,"Fauna"],[/MIL|MILITARY|EXERCISE/,"Actividad militar"]];
+[/WILDLIFE|ANIMAL/,"Fauna"],[/MILITARY (EXERCISE|ACTIVITY|OPS)|\bMIL (EXERCISE|ACTIVITY)\b/,"Actividad militar"],[/PRESIDEN/,"Vuelo presidencial"]];
 function notamItems(txt){
   const t=txt.toUpperCase().replace(/\r/g,"");
   const re=/\b([A-Z]\d{4}\/\d{2})\b|(![A-Z0-9]{3,4} \d{2}\/\d{3,4})/g; const idx=[]; let m;
@@ -410,7 +433,7 @@ function notamItems(txt){
 function translate(body){
   let e=body; const em=body.match(/\bE\)\s*([\s\S]*?)(?:\b[FG]\)|$)/); if(em)e=em[1];
   const found=[];
-  let out=e.replace(/\bEXER CTN\b/g,"⟨tener precaución⟩").replace(/\bNOT AVBL\b|\bNO AVBL\b/g,"⟨no disponible⟩").replace(/\bDUE TO\b/g,"⟨debido a⟩").replace(/\bPRESENCE OF\b/g,"⟨presencia de⟩").replace(/\bIN THE\b/g,"⟨en las⟩").replace(/\bAND\b/g,"⟨y⟩").replace(/\bOR\b/g,"⟨o⟩");
+  let out=e.replace(/\bAD CLSD\b/g,"⟨aeródromo cerrado⟩").replace(/\bROTARY WING\b/g,"⟨helicóptero⟩").replace(/\bNON[- ]REGULAR COMMERCIAL AVIATION\b/g,"⟨aviación comercial no regular⟩").replace(/\bREGULAR COMMERCIAL AVIATION\b/g,"⟨aviación comercial regular⟩").replace(/\bNON[- ]REGULAR AVIATION\b/g,"⟨aviación no regular⟩").replace(/\bSTATE AVIATION\b/g,"⟨aviación de Estado⟩").replace(/\bPRESIDENCY ACFT\b/g,"⟨aeronaves de la Presidencia⟩").replace(/\bPREVIOUS COOR AND AUTH\b/g,"⟨con coordinación y autorización previa de⟩").replace(/\bPREVIOUS COOR\b/g,"⟨con coordinación previa de⟩").replace(/\bOPERATIONS CONTROL CENTER\b/g,"⟨centro de control de operaciones⟩").replace(/\bCOMPLETELY WITHDRAWN\b/g,"⟨retiradas por completo⟩").replace(/\bEXER CTN\b/g,"⟨tener precaución⟩").replace(/\bNOT AVBL\b|\bNO AVBL\b/g,"⟨no disponible⟩").replace(/\bDUE TO\b/g,"⟨debido a⟩").replace(/\bPRESENCE OF\b/g,"⟨presencia de⟩").replace(/\bIN THE\b/g,"⟨en las⟩").replace(/\bAND\b/g,"⟨y⟩").replace(/\bOR\b/g,"⟨o⟩");
   out=out.replace(/[A-Z]+(?:\/S)?/g,w=>{if(ABBR[w]){if(!found.includes(w))found.push(w);return ABBR[w]}return w});
   if(/EXER CTN/.test(e))found.push("EXER CTN");
   out=out.replace(/⟨|⟩/g,"").replace(/\s+/g," ").replace(/\)\s*$/,"").trim();
@@ -620,6 +643,7 @@ function renderDiagram(d){
   const rows=R.map(r=>`<div><b>${esc(r[0])}/${esc(r[2])}</b><br><span class="hint">${(r[4]||0).toLocaleString("es-CO")} × ${(r[5]||0)} ft · ${Math.round((r[4]||0)*0.3048).toLocaleString("es-CO")} m · rumbo ${String(r[1]).padStart(3,"0")}°/${String(r[3]).padStart(3,"0")}° verd.</span></div>`).join("");
   $("dlegend").innerHTML=`<div><b>${esc(ap[0])}</b><br><span class="hint">Elevación ${ap[1].toLocaleString("es-CO")} ft</span></div>${rows}
     <div><span class="sw" style="background:var(--accent)"></span>Pista recomendada</div>
+    <div><span class="sw" style="background:var(--bad)"></span>Cerrada por NOTAM</div>
     <div><span class="sw" style="background:var(--amber)"></span>Viento (hacia donde sopla)</div>`;
 }
 $("tafin").addEventListener("input",()=>{if(tIcao){TSTORE[tIcao]=$("tafin").value;saveTS()}renderTaf()});
@@ -690,16 +714,20 @@ $("fetch").addEventListener("click",async()=>{
     let taf="";
     try{ await openUrl(mcp,`https://aviationweather.gov/api/data/taf?ids=${icao}&format=raw`); taf=pick(await pageText(mcp),icao,true); }catch(e){}
     if(taf){TSTORE[icao]=taf;saveTS();tIcao=null;} renderTaf();
-    status(`METAR${taf?" y TAF":""} de ${icao} cargados. Buscando los NOTAM…`,"ok");
-    let nCount=null, nErrs=[];
-    window.__nerr=nErrs.join(" | ");
+    let nMsg="";
+    if(typeof window.PV_NOTAM==="function"){
+      status(`METAR${taf?" y TAF":""} de ${icao} cargados. Buscando los NOTAM…`,"ok");
+      try{ const list=await window.PV_NOTAM(icao); NSTORE[icao]=list.join("\n"); saveNS(); nIcao=null; render();
+        nMsg=list.length?`, ${list.length} NOTAM`:". Sin NOTAM vigentes"; }
+      catch(e){ nMsg=`. NOTAM: ${(e&&e.message)||"no se pudieron traer"}`; }
+    }
     const t=new Date();
-    const nMsg="";
     status(`Actualizado a las ${String(t.getHours()).padStart(2,"0")}:${String(t.getMinutes()).padStart(2,"0")} (hora local)${taf?"":". Sin TAF disponible para este aeropuerto"}${nMsg}.`,"ok");
   }catch(e){ status(explain(e),"err"); }
   finally{ btn.disabled=false; }
 });
 $("icao").addEventListener("keydown",e=>{if(e.key==="Enter")$("fetch").click()});
+$("notam").addEventListener("input",()=>{if(nIcao){NSTORE[nIcao]=$("notam").value;saveNS()}render()});
 // ---- SimBrief: leer el último OFP del piloto ----
 const SB_BR="host:claude_browser";
 let sbTab=null;
