@@ -127,6 +127,10 @@ button:disabled{opacity:.55;cursor:wait}
 .legend .sw{display:inline-block;width:22px;height:8px;border-radius:2px;vertical-align:middle;margin-right:6px}
 .rwyalert{margin:0 0 12px;padding:8px 10px;border-radius:4px;background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--bad);font-weight:600}
 #notam{min-height:110px}
+.nsum{margin:0 0 10px;font-size:.92rem}
+.npaste,.nmore{margin:8px 0}
+.npaste summary,.nmore summary{cursor:pointer;color:var(--accent);font-weight:600;padding:6px 0}
+.npaste textarea{margin-top:6px}
 pre.taf{font-family:var(--f-mono);font-size:.88rem;white-space:pre-wrap;word-break:break-word;margin:0;color:var(--ink)}
 </style>
 
@@ -151,7 +155,7 @@ try{const r=await fetch(u);const t=await r.text();m.textContent=/PlanVuelo/.test
       <div><label>Aeropuerto</label><div id="apinfo" class="apinfo">—</div></div>
       <div class="full"><label for="metar">METAR</label><textarea id="metar" spellcheck="false">SKSM 231700Z 27005KT 9999 NSC 31/26 Q1008</textarea></div>
     </div>
-    <div class="fetchrow"><button id="fetch" type="button">Traer METAR y TAF</button><p id="status" role="status">Escribe el ICAO y pulsa el botón.</p></div>
+    <div class="fetchrow"><button id="fetch" type="button">Traer METAR, TAF y NOTAM</button><p id="status" role="status">Escribe el ICAO y pulsa el botón.</p></div>
     <div class="fetchrow"><label for="pid" class="hint" style="margin:0">Pilot ID SimBrief</label><input id="pid" inputmode="numeric" autocomplete="off" style="width:110px"><button id="sbbtn" type="button">Usar el destino de mi plan</button><p id="sbinfo" class="hint" style="margin:0"></p></div>
     <div class="links" id="links"></div>
     <p class="hint" style="margin:8px 0 0">El botón lee el reporte de aviationweather.gov, la misma fuente oficial que usan FR24 y metar-taf. También puedes pegar un METAR a mano. Las pistas salen solas de una base de unos 4.800 aeropuertos (OurAirports).</p>
@@ -184,17 +188,14 @@ try{const r=await fetch(u);const t=await r.text();m.textContent=/PlanVuelo/.test
 
   <section class="panel">
     <h2>NOTAM</h2>
-    <label for="notam" id="nlabel">NOTAM</label>
-    <textarea id="notam" spellcheck="false"></textarea>
+    <div id="nsum" class="nsum"></div>
+    <details class="npaste"><summary id="nlabel">Pegar o editar NOTAM a mano</summary>
+    <textarea id="notam" spellcheck="false"></textarea></details>
     <div class="links" id="nlinks"></div>
     <p class="hint" id="nhint" style="margin:8px 0 12px"></p>
     <div class="nlist" id="nlist"></div>
   </section>
 
-  <section class="panel">
-    <h2>Grupo por grupo</h2>
-    <div class="groups" id="groups"></div>
-  </section>
 </div>
 
 <script>
@@ -339,7 +340,7 @@ function render(){
   const icao=($("icao").value||d.station||"").toUpperCase().trim();
   const mismatch=d.station&&icao.length===4&&d.station!==icao;
   $("links").innerHTML=(mismatch?`<span style="color:var(--amber);font-weight:600">El METAR pegado es de ${d.station}, no de ${icao}.</span>`:"")+(icao.length===4?`<a href="https://metar-taf.com/${icao}" target="_blank" rel="noopener">METAR y TAF de ${icao} en metar-taf</a><a href="https://aviationweather.gov/data/metar/?ids=${icao}&taf=1" target="_blank" rel="noopener">${icao} en aviationweather.gov</a>`:"");
-  if(!raw.trim()){$("summary").innerHTML='<p class="empty">Pega un METAR para ver el resumen.</p>';$("runway").innerHTML='<p class="empty">Sin viento que analizar todavía.</p>';$("groups").innerHTML="";return}
+  if(!raw.trim()){$("summary").innerHTML='<p class="empty">Pega un METAR para ver el resumen.</p>';$("runway").innerHTML='<p class="empty">Sin viento que analizar todavía.</p>';if($("groups"))$("groups").innerHTML="";return}
 
   const c=category(d);
   const T=(c,hot)=>c?`<span class="tag${hot?" hot":""}">${esc(c)}</span>`:"";
@@ -391,7 +392,7 @@ function render(){
   html+=`<p class="hint" style="margin:10px 0 0">Los rumbos de la tabla son verdaderos, igual que el viento del METAR, por eso no coinciden exacto con el número de la pista (que es magnético). Límites de referencia A320: 10 kt de cola, 38 kt de cruzado.</p>`;
   $("runway").innerHTML=html; try{renderNotams()}catch(e){} try{renderTaf()}catch(e){} try{renderDiagram(d)}catch(e){$("diagram").innerHTML='<p class="empty" style="padding:16px">No se pudo dibujar el diagrama.</p>'}
 
-  $("groups").innerHTML=out.map(g=>`<div class="g${g.a?" alert":""}${g.u?" unk":""}"><code>${esc(g.c)}</code><div><b>${esc(g.t)}</b><span>${esc(g.s)}</span></div></div>`).join("");
+  if($("groups"))$("groups").innerHTML=out.map(g=>`<div class="g${g.a?" alert":""}${g.u?" unk":""}"><code>${esc(g.c)}</code><div><b>${esc(g.t)}</b><span>${esc(g.s)}</span></div></div>`).join("");
 }
 function table(rows,d,bestId){
   const calm=!d.wind||d.wind.spd<5||d.wind.dir===null;
@@ -441,7 +442,7 @@ function translate(body){
 }
 function sev(b){
   b=b.replace(/\bOTS\b|\bUNUSBL\b/g,"U/S");
-  if(/\bRWY\b[^.]*\bCLSD\b/.test(b)||/\b(ILS|LLZ|GP|LOC|GS)\b[^.]*\bU\/S\b/.test(b)||/\b(ALS|MALSR|ALSF2|PAPI|VASI)\b[^.]*\bU\/S\b/.test(b)||/\bVA\b|VOLCAN/.test(b)||/\bPAPI\b[^.]*U\/S/.test(b))return "red";
+  if(/\bAD (CLSD|LTD)\b/.test(b)||/\bRWY\b[^.]*\bCLSD\b/.test(b)||/\b(ILS|LLZ|GP|LOC|GS)\b[^.]*\bU\/S\b/.test(b)||/\b(ALS|MALSR|ALSF2|PAPI|VASI)\b[^.]*\bU\/S\b/.test(b)||/\bVA\b|VOLCAN/.test(b)||/\bPAPI\b[^.]*U\/S/.test(b))return "red";
   if(/\bRWY\b[^.]*\bLTD\b|\bTWY\b[^.]*\bCLSD\b|\bAPN\b|\bWIP\b|\b(D?VOR|DME|NDB)\b[^.]*U\/S|\bOBST\b|\bUAS\b/.test(b))return "amb";
   return "";
 }
@@ -494,7 +495,7 @@ function renderNotams(){
   const items=notamItems($("notam").value);
   const best=window.__best;
   let hit=null; window.__closed=new Set();
-  const html=items.map(it=>{
+  const parts=items.map(it=>{
     const b=it.body, s=sev(b), tr=translate(b), tm=times(b);
     const rs=REASONS.filter(([r])=>r.test(b)).map(([,t])=>t);
     let why;
@@ -504,13 +505,21 @@ function renderNotams(){
     if(s==="red"&&/\bCLSD\b/.test(b)){for(const mm of b.matchAll(/\bRWY\s*(\d{2}[LCR]?)(?:\/(\d{2}[LCR]?))?/g)){window.__closed.add(mm[1]);if(mm[2])window.__closed.add(mm[2])}}
     if(best&&s==="red"){const n=best.replace(/[LCR]$/,"");const re=new RegExp("\\bRWY\\s*(\\d{2}[LCR]?\\/)?"+best+"\\b|\\bRWY\\s*"+best+"\\/|\\bRWY\\s*(\\d{2}[LCR]?\\/)?"+n+"\\b");if(re.test(b)&&!hit)hit=it;}
     const ab=tr.found.map(k=>`<span><span class="tag">${esc(k)}</span> ${esc(k==="EXER CTN"?"tener precaución":ABBR[k])}</span>`).join("");
-    return `<div class="n ${s}"><div class="bar"></div><div>
+    return {s,h:`<div class="n ${s}"><div class="bar"></div><div>
       <div class="head">${it.id?`<span class="id">${esc(it.id)}</span>`:""}<span class="es">${esc(tr.es)}</span></div>
       <div class="raw">${esc(b)}</div>
       <div class="meta">${why}${tm.list.map(t=>`<span class="when">${esc(t)}</span>`).join("")}</div>
       ${ab?`<div class="abbrs">${ab}</div>`:""}
-    </div></div>`;
-  }).join("");
+    </div></div>`};
+  });
+  const red=parts.filter(p=>p.s==="red"), amb=parts.filter(p=>p.s==="amb"), rest=parts.filter(p=>!p.s);
+  let html="";
+  if(parts.length){
+    $("nsum").innerHTML=`<b>${parts.length} NOTAM</b> · <span style="color:var(--bad)">${red.length} afectan pista o aproximación</span> · <span style="color:var(--amber)">${amb.length} rodaje, plataforma o radioayudas</span> · ${rest.length} otros`;
+    html=red.map(p=>p.h).join("")||'<p class="empty" style="margin:6px 0">Ninguno afecta la pista ni la aproximación.</p>';
+    if(amb.length)html+=`<details class="nmore"${amb.length<=5?" open":""}><summary>Rodaje, plataforma y radioayudas (${amb.length})</summary>${amb.map(p=>p.h).join("")}</details>`;
+    if(rest.length)html+=`<details class="nmore"${parts.length<=5?" open":""}><summary>Otros NOTAM (${rest.length})</summary>${rest.map(p=>p.h).join("")}</details>`;
+  }else $("nsum").innerHTML="";
   $("nlist").innerHTML=(aOther?`<p class="rwyalert">Estos NOTAM parecen ser de ${esc(aOther)}, no de ${esc(nIcao)}.</p>`:"")+(html||`<p class="empty">${nIcao?"Pega aquí los NOTAM de "+esc(nIcao)+" para traducirlos.":"Escribe un ICAO para ver sus NOTAM."}</p>`);
   const rec=document.querySelector("#runway .rec");
   const old=document.querySelector("#runway .rwyalert"); if(old)old.remove();
