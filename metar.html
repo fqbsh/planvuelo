@@ -642,7 +642,43 @@ function renderTaf(){
   const tt=temps.map(g=>`<div class="g"><code>${esc(g.c)}</code><div><b>${esc(g.t)}</b><span>${esc(g.s)}</span></div></div>`).join("");
   $("taflist").innerHTML=`<div class="groups">${head}</div>${body}<div class="groups">${tt}</div>`;
 }
+const OSM={};
+function osmLayer(icao,P,sc,lat0,lon0,kx,ky){
+  const st=OSM[icao];
+  if(!st){
+    OSM[icao]={state:"loading"};
+    const dy=0.035, dx=0.035/Math.max(0.2,Math.cos(lat0*Math.PI/180));
+    const bb=`${lat0-dy},${lon0-dx},${lat0+dy},${lon0+dx}`;
+    const q=`[out:json][timeout:25];(way["aeroway"~"^(taxiway|taxilane|apron|terminal)$"](${bb});node["aeroway"~"^(gate|parking_position)$"](${bb}););out geom;`;
+    fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"}})
+      .then(r=>{if(!r.ok)throw new Error(r.status);return r.json()})
+      .then(j=>{OSM[icao]={state:"ok",el:j.elements||[]};if((($("icao").value||"").toUpperCase().trim())===icao&&window.__lastD)renderDiagram(window.__lastD)})
+      .catch(()=>{OSM[icao]={state:"err"};if((($("icao").value||"").toUpperCase().trim())===icao&&window.__lastD)renderDiagram(window.__lastD)});
+    return "";
+  }
+  if(st.state!=="ok")return "";
+  const pt=(la,lo)=>P((lo-lon0)*kx,-(la-lat0)*ky);
+  const path=g=>g.map((p,i)=>{const [x,y]=pt(p.lat,p.lon);return (i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)}).join("");
+  let a="",t="",tw="",tl="",gt="";
+  const refs={};
+  st.el.forEach(e=>{const ty=e.tags&&e.tags.aeroway;
+    if(e.type==="way"&&e.geometry&&e.geometry.length>1){
+      if(ty==="apron")a+=`<path d="${path(e.geometry)}Z" fill="var(--line)" opacity=".75"/>`;
+      else if(ty==="terminal")t+=`<path d="${path(e.geometry)}Z" fill="var(--muted)" opacity=".45"/>`;
+      else{const w=Math.max((ty==="taxilane"?10:18)*sc,ty==="taxilane"?1.2:2);
+        tw+=`<path d="${path(e.geometry)}" fill="none" stroke="var(--amber)" stroke-opacity=".55" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"/>`;
+        const ref=e.tags.ref;
+        if(ref&&ty==="taxiway"){let L=0;for(let i=1;i<e.geometry.length;i++){const [x1,y1]=pt(e.geometry[i-1].lat,e.geometry[i-1].lon),[x2,y2]=pt(e.geometry[i].lat,e.geometry[i].lon);L+=Math.hypot(x2-x1,y2-y1)}
+          if(!refs[ref]||refs[ref].L<L){const m=e.geometry[Math.floor(e.geometry.length/2)];refs[ref]={L,p:pt(m.lat,m.lon)}}}}}
+    else if(e.type==="node"&&(ty==="gate"||ty==="parking_position")){const [x,y]=pt(e.lat,e.lon);
+      gt+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${ty==="gate"?2.6:2}" fill="var(--ink)"><title>${esc((ty==="gate"?"Puerta ":"Puesto ")+(e.tags.ref||""))}</title></circle>`;
+      if(e.tags.ref&&sc>0.22)gt+=`<text x="${(x+3.5).toFixed(1)}" y="${(y-3).toFixed(1)}" font-size="7.5" fill="var(--muted)">${esc(e.tags.ref)}</text>`;}
+  });
+  if(sc>0.06)Object.entries(refs).forEach(([r,o])=>{if(o.L<25)return;const [x,y]=o.p;tl+=`<g><rect x="${(x-8-r.length*2.5).toFixed(1)}" y="${(y-7).toFixed(1)}" width="${16+r.length*5}" height="14" rx="2" fill="var(--amber)"/><text x="${x.toFixed(1)}" y="${(y+3.5).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--panel)">${esc(r)}</text></g>`});
+  return {under:a+t+tw, over:gt+tl, n:st.el.length};
+}
 function renderDiagram(d){
+  window.__lastD=d;
   const icao=($("icao").value||"").toUpperCase().trim(), ap=DB[icao];
   if(!ap){$("diagram").innerHTML='<p class="empty" style="padding:16px">Escribe un ICAO de la base para dibujar su diagrama.</p>';$("dlegend").innerHTML="";$("dtitle").textContent="Diagrama del aeródromo";return}
   $("dtitle").textContent=`Diagrama de ${icao}`;
@@ -669,6 +705,8 @@ function renderDiagram(d){
   // cuadrícula suave
   for(let gx=0;gx<=W;gx+=40)svg+=`<line x1="${gx}" y1="0" x2="${gx}" y2="${H}" stroke="var(--line)" stroke-width="0.5" opacity=".5"/>`;
   for(let gy=0;gy<=H;gy+=40)svg+=`<line x1="0" y1="${gy}" x2="${W}" y2="${gy}" stroke="var(--line)" stroke-width="0.5" opacity=".5"/>`;
+  const osm=lat0!==undefined?osmLayer(icao,P,sc,lat0,lon0,kx,ky):"";
+  if(osm&&osm.under)svg+=osm.under;
   segs.forEach(g=>{
     const [a1,b1]=P(g.x1,g.y1),[a2,b2]=P(g.x2,g.y2);
     const isBest=best&&(g.r[0]===best||g.r[2]===best), isClosed=closed.has(g.r[0])||closed.has(g.r[2]);
@@ -704,11 +742,14 @@ function renderDiagram(d){
   }else if(d&&d.wind){
     svg+=`<text x="20" y="34" font-size="12" font-weight="600" fill="var(--amber)">${d.wind.spd===0?"Viento en calma":"Viento variable "+d.wind.spd+" kt"}</text>`;
   }
+  if(osm&&osm.over)svg+=osm.over;
+  if(osm&&osm.n)svg+=`<text x="${W-8}" y="${H-8}" text-anchor="end" font-size="9" fill="var(--muted)">Rodaje: © OpenStreetMap</text>`;
   svg+=`</svg>`;
   $("diagram").innerHTML=svg;
   const rows=R.map(r=>`<div><b>${esc(r[0])}/${esc(r[2])}</b><br><span class="hint">${(r[4]||0).toLocaleString("es-CO")} × ${(r[5]||0)} ft · ${Math.round((r[4]||0)*0.3048).toLocaleString("es-CO")} m · rumbo ${String(r[1]).padStart(3,"0")}°/${String(r[3]).padStart(3,"0")}° verd.</span></div>`).join("");
   $("dlegend").innerHTML=`<div><b>${esc(ap[0])}</b><br><span class="hint">Elevación ${ap[1].toLocaleString("es-CO")} ft</span></div>${rows}
     <div><span class="sw" style="background:var(--accent)"></span>Pista recomendada</div>
+    ${(OSM[icao]&&OSM[icao].state==="ok"&&OSM[icao].el.length)?'<div><span class="sw" style="background:var(--amber);opacity:.6"></span>Calles de rodaje</div><div><span class="sw" style="background:var(--line)"></span>Plataforma</div><div><span class="sw" style="background:var(--ink);width:8px;height:8px;border-radius:50%"></span>Puertas y puestos (toca para ver el número)</div>':(OSM[icao]&&OSM[icao].state==="loading"?'<div class="hint">Cargando calles de rodaje…</div>':(OSM[icao]&&(OSM[icao].state==="err"||!OSM[icao].el.length)?'<div class="hint">Sin datos de rodaje para este aeropuerto</div>':""))}
     <div><span class="sw" style="background:var(--bad)"></span>Cerrada por NOTAM</div>
     <div><span class="sw" style="background:var(--amber)"></span>Viento (hacia donde sopla)</div>`;
 }
