@@ -121,7 +121,11 @@ button:disabled{opacity:.55;cursor:wait}
 .abbrs span{font-size:.8rem;color:var(--muted)}
 .diag{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:16px;align-items:start}
 @media (max-width:760px){.diag{grid-template-columns:1fr}}
-.svgbox{background:var(--field);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.svgbox{background:var(--field);border:1px solid var(--line);border-radius:4px;overflow:hidden;touch-action:none;cursor:grab}
+.svgbox:active{cursor:grabbing}
+.dwrap{position:relative;min-width:0}
+.dctl{position:absolute;right:8px;bottom:28px;display:grid;gap:4px}
+.dctl button{width:34px;height:34px;padding:0;font-size:1.2rem;line-height:1;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
 .svgbox svg{display:block;width:100%;height:auto}
 .legend{display:grid;gap:8px;font-size:.88rem}
 .legend .sw{display:inline-block;width:22px;height:8px;border-radius:2px;vertical-align:middle;margin-right:6px}
@@ -184,7 +188,7 @@ try{const r=await fetch(u);const t=await r.text();m.textContent=/PlanVuelo/.test
 
   <section class="panel">
     <h2 id="dtitle">Diagrama del aeródromo</h2>
-    <div class="diag"><div class="svgbox" id="diagram"></div><div class="legend" id="dlegend"></div></div>
+    <div class="diag"><div class="dwrap"><div class="svgbox" id="diagram"></div><div class="dctl"><button type="button" id="dzin" aria-label="Acercar">+</button><button type="button" id="dzout" aria-label="Alejar">−</button><button type="button" id="dzreset" aria-label="Centrar">⌂</button></div></div><div class="legend" id="dlegend"></div></div>
   </section>
 
   <section class="panel" id="tafbox">
@@ -643,40 +647,73 @@ function renderTaf(){
   $("taflist").innerHTML=`<div class="groups">${head}</div>${body}<div class="groups">${tt}</div>`;
 }
 const OSM={};
-function osmLayer(icao,P,sc,lat0,lon0,kx,ky){
+const DV={icao:null,z:1,ox:0,oy:0,sc:1};
+const OV_URLS=["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+function osmLoad(icao,lat0,lon0){
+  try{const c=JSON.parse(localStorage.getItem("osm2-"+icao)||"null");if(c&&Date.now()-c.t<30*86400e3){OSM[icao]={state:"ok",el:c.el};return}}catch(e){}
+  OSM[icao]={state:"loading"};
+  const dy=0.035, dx=0.035/Math.max(0.2,Math.cos(lat0*Math.PI/180));
+  const bb=`${lat0-dy},${lon0-dx},${lat0+dy},${lon0+dx}`;
+  const q=`[out:json][timeout:25];way["aeroway"~"^(taxiway|taxilane|apron|terminal)$"](${bb});out tags geom;`;
+  const tryUrl=k=>fetch(OV_URLS[k],{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"}})
+    .then(r=>{if(!r.ok)throw new Error(r.status);return r.json()})
+    .catch(e=>{if(k+1<OV_URLS.length)return tryUrl(k+1);throw e});
+  tryUrl(0).then(j=>{
+      const el=(j.elements||[]).filter(e=>e.geometry&&e.tags).map(e=>({a:e.tags.aeroway,r:e.tags.ref||"",g:e.geometry.map(p=>[Math.round(p.lat*1e6)/1e6,Math.round(p.lon*1e6)/1e6])}));
+      OSM[icao]={state:"ok",el};
+      try{localStorage.setItem("osm2-"+icao,JSON.stringify({t:Date.now(),el}))}catch(e){
+        try{Object.keys(localStorage).filter(k=>k.startsWith("osm2-")).forEach(k=>localStorage.removeItem(k));localStorage.setItem("osm2-"+icao,JSON.stringify({t:Date.now(),el}))}catch(e2){}}
+    })
+    .catch(()=>{OSM[icao]={state:"err"}})
+    .finally(()=>{if((($("icao").value||"").toUpperCase().trim())===icao&&window.__lastD)renderDiagram(window.__lastD)});
+}
+function osmLayer(icao,P,sc,lat0,lon0,kx,ky,W,H){
+  if(!OSM[icao])osmLoad(icao,lat0,lon0);
   const st=OSM[icao];
-  if(!st){
-    OSM[icao]={state:"loading"};
-    const dy=0.035, dx=0.035/Math.max(0.2,Math.cos(lat0*Math.PI/180));
-    const bb=`${lat0-dy},${lon0-dx},${lat0+dy},${lon0+dx}`;
-    const q=`[out:json][timeout:25];(way["aeroway"~"^(taxiway|taxilane|apron|terminal)$"](${bb});node["aeroway"~"^(gate|parking_position)$"](${bb}););out geom;`;
-    fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"}})
-      .then(r=>{if(!r.ok)throw new Error(r.status);return r.json()})
-      .then(j=>{OSM[icao]={state:"ok",el:j.elements||[]};if((($("icao").value||"").toUpperCase().trim())===icao&&window.__lastD)renderDiagram(window.__lastD)})
-      .catch(()=>{OSM[icao]={state:"err"};if((($("icao").value||"").toUpperCase().trim())===icao&&window.__lastD)renderDiagram(window.__lastD)});
-    return "";
-  }
   if(st.state!=="ok")return "";
   const pt=(la,lo)=>P((lo-lon0)*kx,-(la-lat0)*ky);
-  const path=g=>g.map((p,i)=>{const [x,y]=pt(p.lat,p.lon);return (i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)}).join("");
-  let a="",t="",tw="",tl="",gt="";
+  const path=g=>g.map((p,i)=>{const [x,y]=pt(p[0],p[1]);return (i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)}).join("");
+  let a="",t="",tw="",tl="";
   const refs={};
-  st.el.forEach(e=>{const ty=e.tags&&e.tags.aeroway;
-    if(e.type==="way"&&e.geometry&&e.geometry.length>1){
-      if(ty==="apron")a+=`<path d="${path(e.geometry)}Z" fill="var(--line)" opacity=".75"/>`;
-      else if(ty==="terminal")t+=`<path d="${path(e.geometry)}Z" fill="var(--muted)" opacity=".45"/>`;
-      else{const w=Math.max((ty==="taxilane"?10:18)*sc,ty==="taxilane"?1.2:2);
-        tw+=`<path d="${path(e.geometry)}" fill="none" stroke="var(--amber)" stroke-opacity=".55" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"/>`;
-        const ref=e.tags.ref;
-        if(ref&&ty==="taxiway"){let L=0;for(let i=1;i<e.geometry.length;i++){const [x1,y1]=pt(e.geometry[i-1].lat,e.geometry[i-1].lon),[x2,y2]=pt(e.geometry[i].lat,e.geometry[i].lon);L+=Math.hypot(x2-x1,y2-y1)}
-          if(!refs[ref]||refs[ref].L<L){const m=e.geometry[Math.floor(e.geometry.length/2)];refs[ref]={L,p:pt(m.lat,m.lon)}}}}}
-    else if(e.type==="node"&&(ty==="gate"||ty==="parking_position")){const [x,y]=pt(e.lat,e.lon);
-      gt+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${ty==="gate"?2.6:2}" fill="var(--ink)"><title>${esc((ty==="gate"?"Puerta ":"Puesto ")+(e.tags.ref||""))}</title></circle>`;
-      if(e.tags.ref&&sc>0.22)gt+=`<text x="${(x+3.5).toFixed(1)}" y="${(y-3).toFixed(1)}" font-size="7.5" fill="var(--muted)">${esc(e.tags.ref)}</text>`;}
+  st.el.forEach(e=>{
+    if(e.g.length<2)return;
+    if(e.a==="apron")a+=`<path d="${path(e.g)}Z" fill="var(--line)" opacity=".75"/>`;
+    else if(e.a==="terminal")t+=`<path d="${path(e.g)}Z" fill="var(--muted)" opacity=".45"/>`;
+    else{const w=Math.max((e.a==="taxilane"?10:18)*sc,e.a==="taxilane"?1.2:2);
+      tw+=`<path d="${path(e.g)}" fill="none" stroke="var(--amber)" stroke-opacity=".55" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"/>`;
+      if(e.r&&e.a==="taxiway"){let L=0;for(let i=1;i<e.g.length;i++){const [x1,y1]=pt(e.g[i-1][0],e.g[i-1][1]),[x2,y2]=pt(e.g[i][0],e.g[i][1]);L+=Math.hypot(x2-x1,y2-y1)}
+        const m=e.g[Math.floor(e.g.length/2)];(refs[e.r]=refs[e.r]||[]).push({L,p:pt(m[0],m[1])})}}
   });
-  if(sc>0.06)Object.entries(refs).forEach(([r,o])=>{if(o.L<25)return;const [x,y]=o.p;tl+=`<g><rect x="${(x-8-r.length*2.5).toFixed(1)}" y="${(y-7).toFixed(1)}" width="${16+r.length*5}" height="14" rx="2" fill="var(--amber)"/><text x="${x.toFixed(1)}" y="${(y+3.5).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--panel)">${esc(r)}</text></g>`});
-  return {under:a+t+tw, over:gt+tl, n:st.el.length};
+  // etiquetas sin encimarse: primero las calles más largas, y una sola por letra salvo con mucho zoom
+  const boxes=[], items=[];
+  Object.entries(refs).forEach(([r,arr])=>{arr.sort((x,y)=>y.L-x.L);(sc>0.5?arr.slice(0,3):arr.slice(0,1)).forEach(o=>items.push({r,...o}))});
+  items.sort((x,y)=>y.L-x.L).forEach(o=>{if(o.L<20)return;const [x,y]=o.p;const w=16+o.r.length*5.5,h=14;
+    if(x<0||y<0||x>W||y>H)return;
+    const bx={x1:x-w/2-2,y1:y-h/2-2,x2:x+w/2+2,y2:y+h/2+2};
+    if(boxes.some(b=>!(bx.x2<b.x1||bx.x1>b.x2||bx.y2<b.y1||bx.y1>b.y2)))return;
+    boxes.push(bx);
+    tl+=`<g><rect x="${(x-w/2).toFixed(1)}" y="${(y-h/2).toFixed(1)}" width="${w}" height="${h}" rx="2" fill="var(--amber)"/><text x="${x.toFixed(1)}" y="${(y+3.5).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--panel)">${esc(o.r)}</text></g>`});
+  return {under:a+t+tw, over:tl, n:st.el.length};
 }
+(function(){
+  const box=$("diagram"); if(!box||box.__z)return; box.__z=1;
+  let raf=0; const redraw=()=>{if(raf)return;raf=requestAnimationFrame(()=>{raf=0;if(window.__lastD)renderDiagram(window.__lastD)})};
+  const toUnits=(el,dx,dy)=>{const r=el.getBoundingClientRect();const f=640/Math.max(1,r.width);return [dx*f/DV.sc,dy*f/DV.sc]};
+  const zoomAt=(k)=>{DV.z=Math.min(20,Math.max(0.5,DV.z*k));redraw()};
+  box.addEventListener("wheel",e=>{e.preventDefault();zoomAt(e.deltaY<0?1.2:1/1.2)},{passive:false});
+  const pts=new Map(); let lastD=0;
+  box.addEventListener("pointerdown",e=>{box.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pts.size===2){const [a,b]=[...pts.values()];lastD=Math.hypot(a.x-b.x,a.y-b.y)}});
+  box.addEventListener("pointermove",e=>{const p=pts.get(e.pointerId);if(!p)return;
+    if(pts.size===1){const [ux,uy]=toUnits(box,e.clientX-p.x,e.clientY-p.y);DV.ox-=ux;DV.oy-=uy;redraw()}
+    p.x=e.clientX;p.y=e.clientY;
+    if(pts.size===2){const [a,b]=[...pts.values()];const dd=Math.hypot(a.x-b.x,a.y-b.y);if(lastD)zoomAt(dd/lastD);lastD=dd}});
+  const up=e=>{pts.delete(e.pointerId);if(pts.size<2)lastD=0};
+  box.addEventListener("pointerup",up);box.addEventListener("pointercancel",up);
+  box.addEventListener("dblclick",()=>zoomAt(1.6));
+  $("dzin").addEventListener("click",()=>zoomAt(1.4));
+  $("dzout").addEventListener("click",()=>zoomAt(1/1.4));
+  $("dzreset").addEventListener("click",()=>{DV.z=1;DV.ox=0;DV.oy=0;redraw()});
+})();
 function renderDiagram(d){
   window.__lastD=d;
   const icao=($("icao").value||"").toUpperCase().trim(), ap=DB[icao];
@@ -698,14 +735,16 @@ function renderDiagram(d){
   const xs=segs.flatMap(g=>[g.x1,g.x2]), ys=segs.flatMap(g=>[g.y1,g.y2]);
   const minx=Math.min(...xs),maxx=Math.max(...xs),miny=Math.min(...ys),maxy=Math.max(...ys);
   const W=640,H=440,pad=70;
-  const sc=Math.min((W-2*pad)/Math.max(maxx-minx,1),(H-2*pad)/Math.max(maxy-miny,1));
-  const cx=(minx+maxx)/2, cy=(miny+maxy)/2;
+  if(DV.icao!==icao){DV.icao=icao;DV.z=1;DV.ox=0;DV.oy=0}
+  const sc0=Math.min((W-2*pad)/Math.max(maxx-minx,1),(H-2*pad)/Math.max(maxy-miny,1));
+  const sc=sc0*DV.z; DV.sc=sc;
+  const cx=(minx+maxx)/2+DV.ox, cy=(miny+maxy)/2+DV.oy;
   const P=(x,y)=>[W/2+(x-cx)*sc,H/2+(y-cy)*sc];
   let svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de pistas de ${esc(icao)}" style="font-family:var(--f-mono)">`;
   // cuadrícula suave
   for(let gx=0;gx<=W;gx+=40)svg+=`<line x1="${gx}" y1="0" x2="${gx}" y2="${H}" stroke="var(--line)" stroke-width="0.5" opacity=".5"/>`;
   for(let gy=0;gy<=H;gy+=40)svg+=`<line x1="0" y1="${gy}" x2="${W}" y2="${gy}" stroke="var(--line)" stroke-width="0.5" opacity=".5"/>`;
-  const osm=lat0!==undefined?osmLayer(icao,P,sc,lat0,lon0,kx,ky):"";
+  const osm=lat0!==undefined?osmLayer(icao,P,sc,lat0,lon0,kx,ky,W,H):"";
   if(osm&&osm.under)svg+=osm.under;
   segs.forEach(g=>{
     const [a1,b1]=P(g.x1,g.y1),[a2,b2]=P(g.x2,g.y2);
@@ -749,7 +788,7 @@ function renderDiagram(d){
   const rows=R.map(r=>`<div><b>${esc(r[0])}/${esc(r[2])}</b><br><span class="hint">${(r[4]||0).toLocaleString("es-CO")} × ${(r[5]||0)} ft · ${Math.round((r[4]||0)*0.3048).toLocaleString("es-CO")} m · rumbo ${String(r[1]).padStart(3,"0")}°/${String(r[3]).padStart(3,"0")}° verd.</span></div>`).join("");
   $("dlegend").innerHTML=`<div><b>${esc(ap[0])}</b><br><span class="hint">Elevación ${ap[1].toLocaleString("es-CO")} ft</span></div>${rows}
     <div><span class="sw" style="background:var(--accent)"></span>Pista recomendada</div>
-    ${(OSM[icao]&&OSM[icao].state==="ok"&&OSM[icao].el.length)?'<div><span class="sw" style="background:var(--amber);opacity:.6"></span>Calles de rodaje</div><div><span class="sw" style="background:var(--line)"></span>Plataforma</div><div><span class="sw" style="background:var(--ink);width:8px;height:8px;border-radius:50%"></span>Puertas y puestos (toca para ver el número)</div>':(OSM[icao]&&OSM[icao].state==="loading"?'<div class="hint">Cargando calles de rodaje…</div>':(OSM[icao]&&(OSM[icao].state==="err"||!OSM[icao].el.length)?'<div class="hint">Sin datos de rodaje para este aeropuerto</div>':""))}
+    ${(OSM[icao]&&OSM[icao].state==="ok"&&OSM[icao].el.length)?'<div><span class="sw" style="background:var(--amber);opacity:.6"></span>Calles de rodaje</div><div><span class="sw" style="background:var(--line)"></span>Plataforma</div>':(OSM[icao]&&OSM[icao].state==="loading"?'<div class="hint">Cargando calles de rodaje…</div>':(OSM[icao]&&(OSM[icao].state==="err"||!OSM[icao].el.length)?'<div class="hint">Sin datos de rodaje para este aeropuerto</div>':""))}
     <div><span class="sw" style="background:var(--bad)"></span>Cerrada por NOTAM</div>
     <div><span class="sw" style="background:var(--amber)"></span>Viento (hacia donde sopla)</div>`;
 }
