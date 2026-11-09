@@ -131,6 +131,19 @@ button:disabled{opacity:.55;cursor:wait}
 .npaste,.nmore{margin:8px 0}
 .npaste summary,.nmore summary{cursor:pointer;color:var(--accent);font-weight:600;padding:6px 0}
 .npaste textarea{margin-top:6px}
+.sumtop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.catl{font-weight:600}
+.xl{display:grid}
+.xr{display:grid;grid-template-columns:minmax(96px,max-content) minmax(0,1fr);gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
+.xr:last-child{border-bottom:none}
+.xr code{font-family:var(--f-mono);font-weight:600;color:var(--accent);word-break:break-all}
+.xr b{display:block;font-weight:600}
+.xr span{color:var(--muted)}
+.xr.alert code{color:var(--bad)}
+.xr.unk code{color:var(--muted)}
+.xr.rh{margin-top:6px;border-top:2px solid var(--line)}
+.xr.sub{padding-left:14px}
+@media (max-width:520px){.xr{grid-template-columns:1fr;gap:2px}}
 pre.taf{font-family:var(--f-mono);font-size:.88rem;white-space:pre-wrap;word-break:break-word;margin:0;color:var(--ink)}
 </style>
 
@@ -146,41 +159,36 @@ try{localStorage.setItem("pv-proxy",u)}catch(e){} m.textContent="Probando…";
 try{const r=await fetch(u);const t=await r.text();m.textContent=/PlanVuelo/.test(t)?"Guardado. El servidor responde bien.":"Guardado, pero esa dirección no parece ser tu Worker de PlanVuelo."}catch(e){m.textContent="Guardado, pero no pude conectar con esa dirección. Revísala."}});})();</script><div class="wrap">
   <header>
     <h1>Decodificador METAR</h1>
-    <p class="sub">Escribe el ICAO y pulsa el botón, o pega el METAR que copiaste de FR24 o metar-taf. La página lo traduce grupo por grupo y calcula qué pista conviene con ese viento. Viene cargado con el METAR y el TAF reales de Santa Marta del 23 de octubre a las 12:00 hora local.</p>
   </header>
 
   <section class="panel">
     <div class="inrow">
       <div><label for="icao">ICAO</label><input id="icao" value="SKSM" maxlength="4" autocomplete="off"></div>
       <div><label>Aeropuerto</label><div id="apinfo" class="apinfo">—</div></div>
-      <div class="full"><label for="metar">METAR</label><textarea id="metar" spellcheck="false">SKSM 231700Z 27005KT 9999 NSC 31/26 Q1008</textarea></div>
+      <div class="full"><label for="metar">METAR</label><textarea id="metar" spellcheck="false" placeholder="Pulsa el botón o pega aquí un METAR"></textarea></div>
     </div>
-    <div class="fetchrow"><button id="fetch" type="button">Traer METAR, TAF y NOTAM</button><p id="status" role="status">Escribe el ICAO y pulsa el botón.</p></div>
+    <div class="fetchrow"><button id="fetch" type="button">Traer METAR, TAF y NOTAM</button><p id="status" role="status"></p></div>
     <div class="fetchrow"><label for="pid" class="hint" style="margin:0">Pilot ID SimBrief</label><input id="pid" inputmode="numeric" autocomplete="off" style="width:110px"><button id="sbbtn" type="button">Usar el destino de mi plan</button><p id="sbinfo" class="hint" style="margin:0"></p></div>
     <div class="links" id="links"></div>
-    <p class="hint" style="margin:8px 0 0">El botón lee el reporte de aviationweather.gov, la misma fuente oficial que usan FR24 y metar-taf. También puedes pegar un METAR a mano. Las pistas salen solas de una base de unos 4.800 aeropuertos (OurAirports).</p>
   </section>
 
-  <div class="grid2">
-    <section class="panel">
-      <h2>Resumen</h2>
-      <div id="summary"></div>
-    </section>
-    <section class="panel">
-      <h2>Pista recomendada</h2>
-      <div id="runway"></div>
-    </section>
-  </div>
+  <section class="panel">
+    <h2>METAR explicado</h2>
+    <div id="summary"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Pista recomendada</h2>
+    <div id="runway"></div>
+  </section>
 
   <section class="panel">
     <h2 id="dtitle">Diagrama del aeródromo</h2>
     <div class="diag"><div class="svgbox" id="diagram"></div><div class="legend" id="dlegend"></div></div>
-    <p class="hint" style="margin:10px 0 0">Dibujado a escala con las coordenadas de cada pista (OurAirports). Muestra solo pistas: no trae calles de rodaje ni plataforma. No es una carta oficial; para rodar usa la carta del aeropuerto.</p>
   </section>
 
   <section class="panel" id="tafbox">
     <h2 id="taftitle">TAF (pronóstico)</h2>
-    <p class="hint" style="margin:0 0 10px">El TAF es el pronóstico del aeropuerto para las próximas 24 a 30 horas. El METAR dice cómo está ahora; el TAF, cómo va a estar cuando llegues. Se escribe con los mismos códigos, más unos de cambio: BECMG, TEMPO, PROB y FM.</p>
     <label for="tafin" id="taflabel">TAF</label>
     <textarea id="tafin" spellcheck="false"></textarea>
     <div class="nlist" id="taflist" style="margin-top:12px"></div>
@@ -237,7 +245,7 @@ function parse(raw){
   if(toks[i]==="METAR"||toks[i]==="SPECI"){out.push({c:toks[i],t:toks[i]==="SPECI"?"Reporte especial":"Reporte ordinario",s:toks[i]==="SPECI"?"Se emite fuera de hora porque el tiempo cambió mucho.":"Observación de rutina."});i++}
   for(;i<toks.length;i++){
     const k=toks[i]; let m;
-    if(inRmk){out.push({c:toks.slice(i).join(" "),t:"Comentarios (RMK)",s:rmk(toks.slice(i))});break}
+    if(inRmk){out.push({c:"RMK",t:"Comentarios (remarks)",s:"Desde aquí vienen datos extra de la estación o del observador.",rmkHead:1});out.push(...rmkItems(toks.slice(i)));break}
     if(k==="RMK"){inRmk=true;continue}
     if(!d.station&&/^[A-Z]{4}$/.test(k)){d.station=k;out.push({c:k,t:"Aeropuerto",s:`Código ICAO ${k}.`});continue}
     if(!d.time&&(m=k.match(/^(\d{2})(\d{2})(\d{2})Z$/))){d.time=m;const lh=(+m[2]-5+24)%24;
@@ -320,6 +328,55 @@ function rmk(rest){
   return parts.length?"Información extra del observador: "+parts.join(", ")+".":"Información adicional del observador o de la estación.";
 }
 
+function rmkItems(t){
+  const out=[], P=(c,tt,ss,ex)=>out.push(Object.assign({c,t:tt,s:ss||"",sub:1},ex||{}));
+  const DIRN=x=>x.split("-").map(y=>DIRS[y]||y).join("–");
+  const NAMES={CB:"Cumulonimbos",TCU:"Cúmulos en crecimiento",VCSH:"Chubascos en las cercanías",VCTS:"Tormenta en las cercanías",SH:"Chubascos",TS:"Tormenta",LTG:"Relámpagos",ACC:"Altocúmulos castellanus",VIRGA:"Virga (lluvia que no llega al suelo)",HZ:"Calima",BR:"Neblina",FG:"Niebla",RA:"Lluvia",DZ:"Llovizna",CBMAM:"Cumulonimbos con mammatus"};
+  const sgnT=x=>(x[0]==="1"?-1:1)*(+x.slice(1))/10;
+  const inMM=x=>Math.round(+x/100*25.4*10)/10;
+  for(let i=0;i<t.length;i++){
+    const k=t[i]; let m;
+    if(k==="AO1"){P(k,"Estación automática sin sensor de precipitación","No puede decir si llueve o nieva.");continue}
+    if(k==="AO2"){P(k,"Estación automática con sensor de precipitación","Detecta si llueve o nieva.");continue}
+    if(k==="$"){P(k,"La estación necesita mantenimiento","Algún sensor puede estar dando datos poco fiables.",{a:1});continue}
+    if((m=k.match(/^SLP(\d{3})$/))){const v=+m[1]/10;const p=v<50?1000+v:900+v;P(k,`Presión a nivel del mar: ${p.toFixed(1).replace(".",",")} hPa`,"Uso meteorológico; para el altímetro se usa el QNH.");continue}
+    if(k==="SLPNO"){P(k,"Presión a nivel del mar no disponible");continue}
+    if((m=k.match(/^T([01]\d{3})([01]\d{3})$/))){P(k,`Temperatura exacta ${sgnT(m[1]).toFixed(1).replace(".",",")} °C, rocío ${sgnT(m[2]).toFixed(1).replace(".",",")} °C`,"Los mismos datos del grupo de temperatura, con décimas.");continue}
+    if((m=k.match(/^P(\d{4})$/))){P(k,`Lluvia en la última hora: ${inMM(m[1])} mm`,m[1]==="0000"?"Hubo apenas trazas.":"");continue}
+    if((m=k.match(/^6(\d{4}|\/{4})$/))){P(k,m[1].includes("/")?"Lluvia acumulada (3 o 6 horas): sin dato":`Lluvia acumulada en las últimas 3 o 6 horas: ${inMM(m[1])} mm`);continue}
+    if((m=k.match(/^7(\d{4})$/))){P(k,`Lluvia en las últimas 24 horas: ${inMM(m[1])} mm`);continue}
+    if((m=k.match(/^1([01]\d{3})$/))){P(k,`Temperatura máxima de las últimas 6 horas: ${sgnT(m[1]).toFixed(1).replace(".",",")} °C`);continue}
+    if((m=k.match(/^2([01]\d{3})$/))){P(k,`Temperatura mínima de las últimas 6 horas: ${sgnT(m[1]).toFixed(1).replace(".",",")} °C`);continue}
+    if((m=k.match(/^4([01]\d{3})([01]\d{3})$/))){P(k,`Máxima de 24 horas ${sgnT(m[1]).toFixed(1).replace(".",",")} °C, mínima ${sgnT(m[2]).toFixed(1).replace(".",",")} °C`);continue}
+    if((m=k.match(/^5([0-8])(\d{3})$/))){const a=+m[1];const tr=a<=3?"subiendo":a===4?"estable":"bajando";P(k,`Presión ${tr} en las últimas 3 horas (${(+m[2]/10).toFixed(1).replace(".",",")} hPa)`,a>=5?"Una presión que baja suele anticipar mal tiempo.":"");continue}
+    if((m=k.match(/^(RA|DZ|SN|TS|SHRA|FZRA|PL|GR|UP)((?:[BE]\d{2,4})+)$/))){const ph={RA:"Lluvia",DZ:"Llovizna",SN:"Nieve",TS:"Tormenta",SHRA:"Chubascos",FZRA:"Lluvia engelante",PL:"Hielo granulado",GR:"Granizo",UP:"Precipitación desconocida"}[m[1]];
+      const ev=[...m[2].matchAll(/([BE])(\d{2,4})/g)].map(x=>{const hm=x[2].length===4?`${x[2].slice(0,2)}:${x[2].slice(2)} UTC`:`el minuto ${x[2]}`;return `${x[1]==="B"?"empezó":"terminó"} ${x[2].length===4?"a las "+hm:"en "+hm}`});
+      P(k,`${ph}: ${ev.join(", ")}`,"B = empezó, E = terminó; si solo hay minutos, es dentro de la hora del reporte.");continue}
+    if(k==="PK"&&t[i+1]==="WND"&&(m=(t[i+2]||"").match(/^(\d{3})(\d{2,3})\/(\d{2,4})$/))){P(`PK WND ${t[i+2]}`,`Ráfaga máxima: ${m[2]} kt desde ${m[1]}°`,`A las ${m[3].length===4?m[3].slice(0,2)+":"+m[3].slice(2):"el minuto "+m[3]} (UTC).`,{a:+m[2]>=25?1:0});i+=2;continue}
+    if(k==="WSHFT"&&/^\d{2,4}$/.test(t[i+1]||"")){const v=t[i+1];let ex="";if(t[i+2]==="FROPA"){ex=" por el paso de un frente";i++}P(`WSHFT ${v}`,`Cambio brusco de dirección del viento${ex}`,`A las ${v.length===4?v.slice(0,2)+":"+v.slice(2):"el minuto "+v} (UTC).`);i++;continue}
+    if(/^LTG(IC|CG|CC|CA)*$/.test(k)){let c=k,where="";if(t[i+1]==="DSNT"){c+=" DSNT";where=" lejanos (a más de 10 NM)";i++}else if(t[i+1]==="VC"){c+=" VC";where=" cercanos (5 a 10 NM)";i++}else if(t[i+1]==="OHD"){c+=" OHD";where=" sobre el aeropuerto";i++}
+      if(/^(ALQDS|[NSEW]{1,2}(-[NSEW]{1,2})*)$/.test(t[i+1]||"")){c+=" "+t[i+1];where+=t[i+1]==="ALQDS"?" en todas direcciones":" al "+DIRN(t[i+1]);i++}
+      const ty=[];if(/IC/.test(k))ty.push("dentro de la nube");if(/CG/.test(k))ty.push("nube-tierra");if(/CC/.test(k))ty.push("entre nubes");if(/CA/.test(k))ty.push("nube-aire");
+      P(c,`Relámpagos${where}`,ty.length?"Tipo: "+ty.join(", ")+".":"",{a:1});continue}
+    if((m=k.match(/^(CB|TCU|VCSH|VCTS|SH|TS|LTG|ACC|VIRGA|HZ|BR|FG|RA|DZ|CBMAM)\/([NSEW]{1,2}(?:-[NSEW]{1,2})*)$/))){P(k,`${NAMES[m[1]]} al ${DIRN(m[2])}`,"",{a:/CB|TS|TCU/.test(m[1])?1:0});continue}
+    if(NAMES[k]&&!/^(RA|DZ)$/.test(k)){let c=k,where="";
+      if(t[i+1]==="DSNT"){c+=" DSNT";where=" lejanos";i++}else if(t[i+1]==="VC"){c+=" VC";where=" en las cercanías";i++}else if(t[i+1]==="OHD"){c+=" OHD";where=" sobre el aeropuerto";i++}
+      if(/^(ALQDS|[NSEW]{1,2}(-[NSEW]{1,2})*)$/.test(t[i+1]||"")){c+=" "+t[i+1];where+=t[i+1]==="ALQDS"?" en todas direcciones":" al "+DIRN(t[i+1]);i++}
+      if(t[i+1]==="MOV"&&/^([NSEW]{1,2}|OHD)$/.test(t[i+2]||"")){c+=" MOV "+t[i+2];where+=", moviéndose hacia el "+(DIRS[t[i+2]]||t[i+2]);i+=2}
+      P(c,NAMES[k]+where,"",{a:/CB|TS|TCU/.test(k)?1:0});continue}
+    if(k==="VIS"&&t[i+1]){let c="VIS "+t[i+1],tx=`Visibilidad variable: ${t[i+1]}`;if((m=t[i+1].match(/^(\d+)V(\d+)$/)))tx=`Visibilidad variable entre ${m[1]} y ${m[2]}`;i++;if(/^[NSEW]{1,2}$/.test(t[i+1]||"")&&!/V/.test(t[i])){c+=" "+t[i+1];tx=`Visibilidad hacia el ${DIRS[t[i+1]]}: ${t[i]}`;i++}P(c,tx);continue}
+    if(k==="CIG"&&(m=(t[i+1]||"").match(/^(\d{3})V(\d{3})$/))){P(`CIG ${t[i+1]}`,`Techo variable entre ${(+m[1]*100).toLocaleString("es-CO")} y ${(+m[2]*100).toLocaleString("es-CO")} ft`);i++;continue}
+    const NO={TSNO:"Sin detector de tormentas disponible",PWINO:"Sensor de tiempo presente no disponible",PNO:"Pluviómetro no disponible",FZRANO:"Sensor de lluvia engelante no disponible",RVRNO:"Alcance visual de pista no disponible",VISNO:"Sensor de visibilidad secundario no disponible",CHINO:"Sensor de techo secundario no disponible"};
+    if(NO[k]){P(k,NO[k],"El METAR puede no reportar ese fenómeno aunque ocurra.",{a:1});continue}
+    if(k==="FROPA"){P(k,"Paso de un frente");continue}
+    if(k==="PRESRR"){P(k,"Presión subiendo rápido");continue}
+    if(k==="PRESFR"){P(k,"Presión bajando rápido","Puede anticipar mal tiempo.",{a:1});continue}
+    if((m=k.match(/^QFE(\d{3,4})(?:\/(\d{3,4}))?$/))){P(k,`QFE ${m[1]}${m[2]?" ("+m[2]+")":""}`,"Presión al nivel de la pista: con ella el altímetro marca 0 en tierra.");continue}
+    if(k==="NOSIG"){P(k,"Sin cambios significativos esperados","En las próximas 2 horas.");continue}
+    P(k,"Sin traducción automática","Comentario libre de la estación o del observador.",{u:1});
+  }
+  return out;
+}
 function runways(icao){
   const a=DB[icao]; if(!a) return [];
   return a[2].flatMap(([le,lh,he,hh,len])=>[{id:le,hdg:lh,len},{id:he,hdg:hh,len}]);
@@ -360,9 +417,9 @@ function render(){
   if(d.temp!==null)sum.push(["Temp / rocío",L(`${d.temp} °C / ${d.dew} °C`,d.codes.temp,false,"M delante = bajo cero")]);
   if(d.qnh)sum.push(["QNH",L(d.qnh+" hPa",d.codes.qnh,false,d.codes.qnh&&d.codes.qnh[0]==="A"?"A = pulgadas de mercurio (EE. UU.)":"Q = hectopascales, va en el BARO")]);
   const cb=d.clouds.some(x=>x.type==="CB"||x.type==="TCU")||d.wx.some(w=>w.includes("TS"));
-  $("summary").innerHTML=`<span class="cat" style="background:var(${c.col})">${c.cat}</span>${d.auto?'<span class="chip">AUTO</span>':""}${cb?'<span class="chip" style="color:var(--bad)">Tormenta</span>':""}
-    <dl class="kv">${sum.map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join("")}</dl>
-    <p class="hint" style="margin:12px 0 0">VFR: techo sobre 3.000 ft y visibilidad sobre 8 km. MVFR: marginal. IFR: techo bajo 1.000 ft o visibilidad bajo 5 km. LIFR: techo bajo 500 ft o visibilidad bajo 1,6 km.</p>`;
+  const CATL={VFR:"Condiciones visuales",MVFR:"Visual marginal",IFR:"Vuelo por instrumentos",LIFR:"Instrumentos, condiciones muy bajas"};
+  $("summary").innerHTML=`<div class="sumtop"><span class="cat" style="background:var(${c.col})">${c.cat}</span><span class="catl">${CATL[c.cat]}</span>${d.auto?'<span class="chip">AUTO</span>':""}${cb?'<span class="chip" style="color:var(--bad)">Tormenta</span>':""}</div>
+    <div class="xl">${out.map(g=>`<div class="xr${g.a?" alert":""}${g.u?" unk":""}${g.rmkHead?" rh":""}${g.sub?" sub":""}"><code>${esc(g.c)}</code><div><b>${esc(g.t)}</b>${g.s?`<span>${esc(g.s)}</span>`:""}</div></div>`).join("")}</div>`;
 
   const ap=DB[icao];
   $("apinfo").innerHTML=ap?`<b>${esc(ap[0])}</b>Elevación ${ap[1].toLocaleString("es-CO")} ft · ${ap[2].length} pista${ap[2].length>1?"s":""}`:(icao.length===4?"No está en la base":"—");
@@ -821,4 +878,4 @@ function renderTraffic(icao,ac){
 }
 
 </script>
-</body></html>
+<script>setTimeout(function(){try{var i=document.getElementById("icao");if(/^[A-Za-z]{4}$/.test((i.value||"").trim()))document.getElementById("fetch").click()}catch(e){}},400);</script></body></html>
