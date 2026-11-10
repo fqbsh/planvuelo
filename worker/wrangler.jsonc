@@ -1,0 +1,8 @@
+// Configuración del Worker de PlanVuelo para Cloudflare.
+// Las credenciales de autorouter NO van aquí: son secretos guardados en Cloudflare.
+{
+  "name": "planvuelo",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true
+}
