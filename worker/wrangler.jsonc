@@ -4,5 +4,7 @@
   "name": "planvuelo",
   "main": "worker.js",
   "compatibility_date": "2026-10-01",
-  "workers_dev": true
+  "workers_dev": true,
+  // Conserva las variables y secretos creados en el panel de Cloudflare al instalar desde GitHub.
+  "keep_vars": true
 }
