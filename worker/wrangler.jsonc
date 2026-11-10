@@ -1,4 +1,4 @@
-// Configuración del Worker de PlanVuelo para Cloudflare.
+// Configuración del Worker de PlanVuelo para Cloudflare (se instala solo al subir cambios a GitHub).
 // Las credenciales de autorouter NO van aquí: son secretos guardados en Cloudflare.
 {
   "name": "planvuelo",
